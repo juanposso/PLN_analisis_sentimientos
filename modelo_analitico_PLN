@@ -1,0 +1,590 @@
+1#!/usr/bin/env python
+# coding: utf-8
+
+# # Modelo predictivo NLP calificacion NPS
+
+# se cargan las librerias y el insumo en excel
+
+# In[1]:
+
+
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import RegexpTokenizer
+from nltk.stem import PorterStemmer
+from nltk import word_tokenize
+from nltk import wordpunct_tokenize
+from nltk.util import ngrams 
+from collections import Counter 
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+excel = pd.read_excel('encuestas_clientes.xlsx') #use pandas para leer el archivo de excel
+df = excel.copy()
+df = pd.DataFrame({'verbatim':df['verbatim']})
+df.head(20)
+
+
+# ## Limpieza de datos (Mayusc, reemplazar caractares y espacios).
+
+# In[2]:
+
+
+# Limpieza de datos
+
+df['replace_1'] = df['verbatim'].str.replace("\r", " ")
+df['replace_1'] = df['replace_1'].str.replace("\n", " ")
+df['replace_1'] = df['replace_1'].str.replace("/", " ")
+df['replace_1'] = df['replace_1'].str.replace("    ", " ")
+df['replace_1'] = df['replace_1'].str.replace("   ", " ")
+df['replace_1'] = df['replace_1'].str.replace("  ", " ")
+df['replace_1'] = df['replace_1'].str.replace(" +", " ")
+df['replace_1'] = df['replace_1'].str.replace("  +", " ")
+df['replace_1'] = df['replace_1'].str.replace('NO DA MÁS INFORMACIÓN', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO DA MAS INFORMACION', ' ')
+df['replace_1'] = df['replace_1'].str.replace('DA MÁS INFORMACIÓN', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO APORTA MAS', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO APORTA MÁS', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO INDICA MÁS INFORMACIÓN', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO INDICA MAS INFORMACION', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO AGREGA MAS', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO OPINA', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO OTORGA INFORMACIÓN', ' ')
+df['replace_1'] = df['replace_1'].str.replace('NO OTORGA INFORMACION', ' ')
+
+   
+    # mayusculas a minisculas
+       
+df['replace_2'] = df['replace_1'].str.lower()
+   
+df['replace_3'] = df['replace_2']
+   
+   # Signos de puntuacion
+punctuation_signs = list('.,;:%@¡!¿?()$&#+-')
+for punct_sign in punctuation_signs:
+
+   df['replace_3'] = df['replace_3'].str.replace(punct_sign, '')
+       
+   # Etiqueta <num>
+df['replace_4'] = df['replace_3'].str.replace('\d+','')
+df['replace_4'] = df['replace_3'].str.replace('<num>','')
+       
+   # reemplazar Acentos
+replacer = {u'á':'a', u'é':'e', u'í':'i', u'ó':'o', u'ú|ü':'u', u'Á':'A', u'É':'E', u'Í':'I', u'Ó':'O', u'Ú|Ü':'U', u'ñ':'n', u'Ñ':'N',u'no da mas informacion':''}
+df['replace_5'] = df['replace_4']
+
+for k, v in replacer.items():
+       df['replace_5'] = df['replace_5'].str.replace(k,v)
+
+df = pd.DataFrame({'verbatim':df['replace_5']})
+remover_NaN = df.replace(np.nan, '', regex=True) #remove None (which return as words (str))
+df_normalizado = remover_NaN.astype(str).apply(lambda x: ' '.join(x), axis=1) #convert cells to strings, merge columns
+df_predic = pd.DataFrame({'verbatim':df_normalizado})
+
+
+# ## Resultado parcial despues de la limpieza
+
+# In[3]:
+
+
+df_predic.head(20)
+
+
+# ## Traducción de los Verbatim en Español a Inglés para realizar procesamiento de calificación
+
+# In[ ]:
+
+
+print(row)
+
+
+# In[6]:
+
+
+import time
+from textblob import TextBlob
+
+lista_traducir = []
+
+for index, fila in df_predic.iterrows():
+    row = fila['verbatim']
+    textblob=[TextBlob(row).translate(from_lang='es',to='en') for fila in df_predic]
+    lista_traducir.append(textblob) #append stemmed words to list
+    time.sleep(2)
+    textblob = ''
+
+df11_preliminar = pd.DataFrame(lista_traducir) #convert list back to pandas dataframe
+remover_NaN = df11_preliminar.replace(np.nan, '', regex=True) #remove None (which return as words (str))
+df_traducido = remover_NaN.astype(str).apply(lambda x: ' '.join(x), axis=1) #convert cells to strings, merge columns
+df_en = pd.DataFrame({'verbatim_en':df_traducido})
+df_en
+
+
+# In[9]:
+
+
+df_en = pd.DataFrame({'verbatim_en':df_traducido})
+df_en
+
+
+# In[ ]:
+
+
+import goslate
+
+gs = goslate.Goslate(service_urls=['http://translate.google.de'])
+
+lista_traducir = []
+
+for index, fila in df_predic.iterrows():
+    row = fila['verbatim']
+    translations=[gs.translate(row, 'en') for fila in df_predic]
+    time.sleep(3)
+    lista_traducir.append(translations) 
+
+df11_preliminar = pd.DataFrame(lista_traducir)
+remover_NaN = df11_preliminar.replace(np.nan, '', regex=True) #Remueve na o nan por un string vacio
+df_traducido = remover_NaN.astype(str).apply(lambda x: ' '.join(x), axis=1) #convierte celdas a string y fuciona las columnas
+df_en = pd.DataFrame({'verbatim_en':df_traducido})
+df_en
+
+
+# In[ ]:
+
+
+from googletrans import Translator
+
+translator = Translator()
+
+lista_traducir = []
+
+for index, fila in df_predic.iterrows():
+    row = fila['verbatim']
+    translations=[translator.translate(row, dest='en') for fila in df_predic]
+    text = [translation.text for translation in translations]
+    time.sleep(1)
+    lista_traducir.append(text) 
+
+    
+df11_preliminar = pd.DataFrame(lista_traducir)
+remover_NaN = df11_preliminar.replace(np.nan, '', regex=True) #Remueve na o nan por un string vacio
+df_traducido = remover_NaN.astype(str).apply(lambda x: ' '.join(x), axis=1) #convierte celdas a string y fuciona las columnas
+df_en = pd.DataFrame({'verbatim_en':df_traducido})
+df_en
+
+
+# ## Modelo pre-entrenado - textblob para Análisis de Sentimientos
+# ## -1=sentimiento muy negativo, 0 = neutro, 1=Sentimiento muy positivo
+# ## 0=muy objetivo (centrado en la apreciación)  - 1=Muy subjetivo ()
+
+# In[10]:
+
+
+from textblob import TextBlob
+
+lista_polaridad = []
+lista_subjetividad = []
+
+for index, fila in df_en.iterrows():
+    row = fila['verbatim_en']
+    sentimientos=[TextBlob(row).sentiment for fila in df_en]
+    polaridad = [polaridad.polarity for polaridad in sentimientos]
+    subjetividad = [subjetividad.subjectivity for subjetividad in sentimientos]
+    
+    lista_polaridad.append(polaridad)
+    lista_subjetividad.append(subjetividad)
+
+pol_pre = pd.DataFrame(lista_polaridad, columns=['polarid'])
+pol_rnd = round(pol_pre*10,0)
+pol = pd.DataFrame(pol_rnd)
+
+sub_pre = pd.DataFrame(lista_subjetividad, columns=['subjet'])
+sub_rnd = round(sub_pre*10,0)
+sub = pd.DataFrame(sub_rnd)
+
+#equivalencias de polaridad vs NPS
+pol.loc[pol['polarid'] <= -9, 'nps'] = '1'
+pol.loc[(pol['polarid'] <= -7) & (pol['polarid'] > -9), 'nps'] = '2'
+pol.loc[(pol['polarid'] <= -5) & (pol['polarid'] > -7), 'nps'] = '3'
+pol.loc[(pol['polarid'] <= -3) & (pol['polarid'] > -5), 'nps'] = '4'
+pol.loc[(pol['polarid'] <= -2) & (pol['polarid'] > -3), 'nps'] = '5'
+pol.loc[(pol['polarid'] <= -1) & (pol['polarid'] > -2), 'nps'] = '6'
+pol.loc[(pol['polarid'] == 0), 'nps'] = '7-8'
+pol.loc[(pol['polarid'] >= 1) & (pol['polarid'] < 7), 'nps'] = '9'
+pol.loc[pol['polarid'] >= 7, 'nps'] = '10'
+
+#descripcion NPS
+pol.loc[pol['polarid'] >= 1, 'desc_nps'] = 'promotor'
+pol.loc[pol['polarid'] == 0, 'desc_nps'] = 'neutro'
+pol.loc[pol['polarid'] <=-1, 'desc_nps'] = 'detractor'
+
+
+# ## Unificación del ID y Tipo ID inicial con el Verbatim nuevo y la calificación del modelo
+
+# In[11]:
+
+
+id_clie=pd.DataFrame({'id':excel['id'].round().astype('int64')})
+
+prediccion = pd.concat([id_clie, df_predic, df_en, sub, pol], axis=1)
+
+
+# ## Exportación y visualización (para verificación)
+
+# In[12]:
+
+
+prediccion.to_excel('calificación_nps.xlsx', index = False)
+prediccion.head(20)
+
+
+# # Análisis exploratorio del texto y los resultados
+
+# ## tokenizacion (separar cada palabra), quitar palabras vacias.
+
+# In[26]:
+
+
+tokenizer = RegexpTokenizer(r'\w+')
+#stemmer = PorterStemmer() 
+stop_words = set(stopwords.words('spanish'))
+
+df = prediccion['verbatim'].values.tolist() #convertir valores a una lista de listas (cada fila se convierte en una lista separada)
+tokens = [tokenizer.tokenize(str(i)) for i in df] #tokenizar palabras en listas
+cleaned_list = []
+for m in tokens:
+    stopped = [i for i in m if str(i).lower() not in stop_words] # eliminar palabras vacías
+    cleaned_list.append(stopped) #llena la lista vacia (cleaned_list) con las palabras principales
+
+df_preliminar = pd.DataFrame(cleaned_list) #conviente el cleaned_list a pandas dataframe
+remover_NaN = df_preliminar.replace(np.nan, '', regex=True) #Remueve na o nan por un string vacio
+df_fusionado = remover_NaN.astype(str).apply(lambda x: ' '.join(x), axis=1) #convierte celdas a string y fuciona las columnas
+df_final = pd.DataFrame({'verbatim':df_fusionado})
+df_final
+
+
+# In[27]:
+
+
+final = pd.concat([id_clie, df_final, prediccion['nps'],prediccion['desc_nps']], axis=1)
+final.head(10)
+
+
+# ## Descripcion del dataframe (conteo, unico, principal y su frecuencia)
+
+# In[28]:
+
+
+descr=final['desc_nps'].describe()
+descr
+
+
+# ## Conteo del número de encuestas por DESCRIPCION NPS (Promotor, Neutro y Detractor)
+
+# In[29]:
+
+
+desc_nps_counts = final.groupby('desc_nps')['verbatim'].count()
+desc_nps_counts = pd.DataFrame(desc_nps_counts,columns=['verbatim'], index=None)
+print(desc_nps_counts)
+
+#graficos
+desc_nps_counts.plot(kind='bar', width = 0.5,figsize=(10,5), color = '#FFD700');
+
+
+# ## Conteo del número de encuestas por calicación NPS (>1 = Promotor, 0=Neutro, -1=Detractor)
+
+# In[30]:
+
+
+nps_counts = final.groupby('nps')['verbatim'].count()
+nps_counts = pd.DataFrame(nps_counts,columns=['verbatim'], index=None)
+print(nps_counts)
+
+#graficos
+nps_counts.plot(kind='bar', width = 0.5,figsize=(10,5), color = '#FF5733');
+
+
+# # Conteo de frecuencia de las palabras - Encuestas totales
+
+# In[33]:
+
+
+top_N = 10
+# 
+split_muestra = final['verbatim'].str.lower().str.cat(sep=' ')
+words_muestra = nltk.tokenize.word_tokenize(split_muestra)
+word_dist_muestra = nltk.FreqDist(words_muestra)
+total_words_muestra =nltk.FreqDist(split_muestra)
+
+word_count_muestra = pd.DataFrame(word_dist_muestra.most_common(top_N),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+
+print("Top 10 de palabras más usadas en la muestra:\n ")
+print(word_count_muestra)
+
+print("\n Total de palabras únicas usadas de la muestra: \n ")
+print(word_dist_muestra)
+
+
+print("\n Total de palabras usadas en la muestra: \n ")
+print(total_words_muestra)
+
+
+# grafico
+fig, ax = plt.subplots(figsize = (9, 5))
+sns.barplot(x="Palabra", y="Frecuencia", data=word_count_muestra, ax = ax);
+
+
+# ## Conteo de frecuencia de las palabras - detractores
+
+# In[34]:
+
+
+#filtro por detractor
+detrac=final['desc_nps']=='detractor'
+detrac_f = final[detrac]
+
+top_N = 10
+#if not necessary all lower
+
+split_detrac_f = detrac_f['verbatim'].str.lower().str.cat(sep=' ')
+words_detrac_f = nltk.tokenize.word_tokenize(split_detrac_f)
+word_dist_detrac_f = nltk.FreqDist(words_detrac_f)
+total_words_detrac_f =nltk.FreqDist(split_detrac_f)
+
+word_count_detrac_f = pd.DataFrame(word_dist_detrac_f.most_common(top_N),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+
+print("\n Top 10 de palabras más usadas por clientes detractores:\n ")
+print(word_count_detrac_f)
+
+print("\n Total de palabras únicas usadas por clientes detractores: \n ")
+print(word_dist_detrac_f)
+
+print("\n Total de palabras usadas por clientes detractores: \n ")
+print(total_words_detrac_f)
+
+# grafico
+fig, ax = plt.subplots(figsize = (14, 5))
+sns.barplot(x="Palabra", y="Frecuencia", data=word_count_detrac_f, ax = ax);
+
+
+# ## Conteo de frecuencia de las palabras - neutros
+
+# In[35]:
+
+
+#filtro por neutro
+neutro=final['desc_nps']=='neutro'
+neutro_f = final[neutro]
+
+top_N = 10
+#if not necessary all lower
+
+split_neutro_f = neutro_f['verbatim'].str.lower().str.cat(sep=' ')
+words_neutro_f = nltk.tokenize.word_tokenize(split_neutro_f)
+word_dist_neutro_f = nltk.FreqDist(words_neutro_f)
+total_words_neutro_f = nltk.FreqDist(split_neutro_f)
+
+word_count_neutro_f = pd.DataFrame(word_dist_neutro_f.most_common(top_N),
+                        columns=['Palabra', 'Frecuencia'], index=None)
+
+print("\n Top 10 de palabras más usadas por clientes neutros:\n ")
+print(word_count_neutro_f)
+
+print("\n Total de palabras únicas usadas por clientes neutros: \n ")
+print(word_dist_neutro_f)
+
+print("\n Total de palabras usadas por clientes neutros: \n ")
+print(total_words_neutro_f)
+
+# grafico
+fig, ax = plt.subplots(figsize = (14, 5))
+sns.barplot(x="Palabra", y="Frecuencia", data=word_count_neutro_f, ax = ax);
+
+
+# ## Conteo de frecuencia de las palabras - Promotores
+
+# In[36]:
+
+
+#filtro por promotor
+promotor=final['desc_nps']=='promotor'
+promotor_f = final[promotor]
+
+top_N = 10
+#if not necessary all lower
+
+split_promotor_f = promotor_f['verbatim'].str.lower().str.cat(sep=' ')
+words_promotor_f = nltk.tokenize.word_tokenize(split_promotor_f)
+word_dist_promotor_f = nltk.FreqDist(words_promotor_f)
+total_words_promotor_f = nltk.FreqDist(split_promotor_f)
+
+word_count_promotor_f = pd.DataFrame(word_dist_promotor_f.most_common(top_N),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+print("\n Top 10 de palabras más usadas por clientes promotores:\n ")
+print(word_count_promotor_f)
+
+print("\n Total de palabras únicas usadas por clientes promotores: \n ")
+print(word_dist_promotor_f)
+
+print("\n Total de palabras usadas por clientes promotores: \n ")
+print(total_words_promotor_f)
+
+# grafico
+fig, ax = plt.subplots(figsize = (14, 5))
+sns.barplot(x="Palabra", y="Frecuencia", data=word_count_promotor_f, ax = ax);
+
+
+# ## Conteo de palabras comunes en los tres resultados - top 10
+
+# In[37]:
+
+
+lista1=words_detrac_f
+lista2=words_neutro_f
+lista3=words_promotor_f
+
+df_total_muestra = words_detrac_f + words_neutro_f + words_promotor_f
+
+def listas(a, b, c):
+    lista_final = []
+    for i in a:
+        if (i not in lista_final) and (i in b) and (i in c):
+            lista_final.append(i)
+    return lista_final
+
+palabras_comunes = listas(lista1, lista2, lista3)
+
+df_palabras_comunes = pd.DataFrame(palabras_comunes)
+df_total_words_muestra = pd.DataFrame(df_total_muestra)
+
+total_palabras_comunes = df_total_words_muestra.merge(df_palabras_comunes, how='left')
+
+token_palabras_comunes = nltk.tokenize.word_tokenize(split_promotor_f)
+count_palabras_comunes = nltk.FreqDist(token_palabras_comunes)
+
+top_palabras_comunes = pd.DataFrame(count_palabras_comunes.most_common(top_N),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+print("\n top 10 palabras comunes en los 3 estados: \n ")
+print(top_palabras_comunes)
+
+# grafico
+fig, ax = plt.subplots(figsize = (14, 5))
+sns.barplot(x="Palabra", y="Frecuencia", data=top_palabras_comunes, ax = ax);
+
+
+# ## conteo de bigramas mas usados - top 20
+
+# In[38]:
+
+
+token1 = nltk.word_tokenize(split_muestra)
+token2 = nltk.word_tokenize(split_detrac_f) 
+token3 = nltk.word_tokenize(split_neutro_f) 
+token4 = nltk.word_tokenize(split_promotor_f)
+
+bigrams1 = ngrams(token1,2)
+bigrams2 = ngrams(token2,2)
+bigrams3 = ngrams(token3,2)
+bigrams4 = ngrams(token4,2)
+
+count_bigrams1 = nltk.FreqDist(bigrams1)
+count_bigrams2 = nltk.FreqDist(bigrams2)
+count_bigrams3 = nltk.FreqDist(bigrams3)
+count_bigrams4 = nltk.FreqDist(bigrams4)
+
+top_bigramas_muestra = pd.DataFrame(count_bigrams1.most_common(20),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+top_bigramas_detract = pd.DataFrame(count_bigrams2.most_common(20),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+top_bigramas_neutro = pd.DataFrame(count_bigrams3.most_common(20),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+top_bigramas_promot = pd.DataFrame(count_bigrams4.most_common(20),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+print("\n top 10 bigramas muestra total: \n ")
+print(top_bigramas_muestra)
+
+print("\n top 10 bigramas detractores: \n ")
+print(top_bigramas_detract)
+
+print("\n top 10 bigramas neutros: \n ")
+print(top_bigramas_neutro)
+
+print("\n top 10 bigramas promotores: \n ")
+print(top_bigramas_promot)
+
+
+# ## Exportación de informes para tableros de visualización
+
+# In[39]:
+
+
+cnt1 = pd.DataFrame(word_dist_muestra.most_common(),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+cnt2 = pd.DataFrame(total_words_muestra.most_common(),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+cnt3 = pd.DataFrame(word_dist_detrac_f.most_common(),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+cnt4 = pd.DataFrame(total_words_detrac_f.most_common(),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+cnt5 = pd.DataFrame(word_dist_neutro_f.most_common(),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+cnt6 = pd.DataFrame(total_words_neutro_f.most_common(),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+cnt7 = pd.DataFrame(word_dist_promotor_f.most_common(),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+cnt8 = pd.DataFrame(total_words_promotor_f.most_common(),
+                    columns=['Palabra', 'Frecuencia'], index=None)
+
+
+total1 = cnt1['Frecuencia'].sum() # total palabras unicas toda la muestra
+total2 = cnt2['Frecuencia'].sum() # total palabras de la muestra
+total3 = cnt3['Frecuencia'].sum() # total palabras unicas detractores
+total4 = cnt4['Frecuencia'].sum() # total palabras detractores
+total5 = cnt5['Frecuencia'].sum() # total palabras unicas neutros
+total6 = cnt6['Frecuencia'].sum() # total palabras neutros
+total7 = cnt7['Frecuencia'].sum() # total palabras unicas promotores
+total8 = cnt8['Frecuencia'].sum() # total palabras promotores
+
+est_palabras= {'tipo_conteo': ['total palabras unicas toda la muestra', 'total palabras de la muestra',
+                     'total palabras unicas detractores','total palabras detractores',
+                     'total palabras unicas neutros','total palabras neutros','total palabras unicas promotores',
+                     'total palabras promotores'], 'total': [total1,total2,total3,total4,total5,total6,total7,total8]}
+
+inf_est_palabras = pd.DataFrame(data=est_palabras, index=None)
+
+
+descr.to_excel('informe1.xlsx') #exporta descripcion del resultado
+desc_nps_counts.to_excel('informe2.xlsx') # exporta conteo por Promotor, Neutro y Detractor
+nps_counts.to_excel('informe3.xlsx') # exporta conteo por calificacion
+word_count_muestra.to_excel('informe4.xlsx', index = False) # exporta conteo Top 10 de palabras más usadas de la muestra
+word_count_detrac_f.to_excel('informe5.xlsx', index = False) # exporta conteo Top 10 de palabras más usadas detractores
+word_count_neutro_f.to_excel('informe6.xlsx', index = False) # exporta conteo Top 10 de palabras más usadas neutros
+word_count_promotor_f.to_excel('informe7.xlsx', index = False) # exporta conteo Top 10 de palabras más usadas promotores
+top_palabras_comunes.to_excel('informe8.xlsx', index = False) # exporta conteo Top 10 de palabras comunes en D,N.P
+top_bigramas_muestra.to_excel('informe9.xlsx', index = False) # exporta conteo Top 20 bigramas más usados de la muestra
+top_bigramas_detract.to_excel('informe10.xlsx', index = False) # exporta conteo Top 20 bigramas más usados detractores
+top_bigramas_neutro.to_excel('informe11.xlsx', index = False) # exporta conteo Top 20 bigramas más usados neutros
+top_bigramas_promot.to_excel('informe12.xlsx', index = False) # exporta conteo Top 20 bigramas más usados promotores
+inf_est_palabras.to_excel('informe13.xlsx', index = False) # exporta estadisticas total palabras
+
